@@ -1,20 +1,26 @@
 package com.example.spatialdemo;
 
+import com.example.spatialdemo.model.SimulationMetrics;
+import com.example.spatialdemo.model.User;
+import com.example.spatialdemo.model.VirtualMap;
+import com.example.spatialdemo.service.SimulationService;
+import com.example.spatialdemo.strategy.BaselineMatchmakingStrategy;
+import com.example.spatialdemo.strategy.RTreeSimilarityMatchmakingStrategy;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 import java.util.List;
-import java.util.Map;
 
 @SpringBootApplication
+@EnableConfigurationProperties(com.example.spatialdemo.config.SimulationProperties.class)
 public class SpatialDemoApplication implements CommandLineRunner {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final SimulationService simulationService;
 
-    public SpatialDemoApplication(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public SpatialDemoApplication(SimulationService simulationService) {
+        this.simulationService = simulationService;
     }
 
     public static void main(String[] args) {
@@ -23,35 +29,40 @@ public class SpatialDemoApplication implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        try {
-            String selectSql = "SELECT Name, Location.STAsText() AS WKTLocation FROM Places";
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(selectSql);
+        var props = simulationService.getProperties();
+        VirtualMap map = simulationService.getVirtualMap();
 
-            System.out.println("\n--- Stored Spatial Locations ---");
-            for (Map<String, Object> row : rows) {
-                System.out.printf("Place: %-22s | Location (WKT): %s%n",
-                        row.get("Name"),
-                        row.get("WKTLocation"));
-            }
+        System.out.printf("Nodes: %d | Routes: %d%n", map.nodes().size(), map.routePaths().size());
+        System.out.printf("Users: %d | Spatial Threshold: %.1f | Time Threshold: %.1f%n",
+                props.userCount(), props.spatialThreshold(), props.timeThreshold());
 
-            String distanceSql = "SELECT Name, " +
-                    "Location.STDistance(geography::STGeomFromText('POINT(-73.9851 40.7589)', 4326)) AS DistanceMeters " +
-                    "FROM Places";
+        List<User> users = simulationService.generateSyntheticUsers();
+        System.out.printf("Population Initialized: [%d Participants spawning at graph nodes]%n", users.size());
+        System.out.println("This is where the fun begins! For nerds, anyway.");
+        System.out.println();
 
-            List<Map<String, Object>> distanceRows = jdbcTemplate.queryForList(distanceSql);
 
-            System.out.println("\n--- Distance from Times Square (-73.9851, 40.7589) ---");
-            for (Map<String, Object> row : distanceRows) {
-                System.out.printf("Place: %-22s | Distance: %.2f meters%n",
-                        row.get("Name"),
-                        ((Number) row.get("DistanceMeters")).doubleValue());
-            }
-            System.out.println();
-            System.out.println();
+        BaselineMatchmakingStrategy baseline = new BaselineMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold());
+        SimulationMetrics baselineMetrics = simulationService.runSimulation(baseline, users);
+        printMetrics(baselineMetrics);
 
-        } catch (Exception e) {
-            System.err.println("Database Connection Failed! Check your TCP/IP settings or credentials.");
-            e.printStackTrace();
-        }
+        System.out.println();
+
+        RTreeSimilarityMatchmakingStrategy rtree = new RTreeSimilarityMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold(), props.rtreeBuffer());
+        SimulationMetrics rtreeMetrics = simulationService.runSimulation(rtree, users);
+        printMetrics(rtreeMetrics);
+
+        System.out.println();
+        System.out.println("Simulation complete. You may end the program.");
+    }
+
+    private void printMetrics(SimulationMetrics m) {
+        System.out.printf("ALGORITHM: %s%n", m.algorithmName());
+        System.out.printf("  Total Participants  : %d%n", m.totalUsers());
+        System.out.printf("  Matched Participants: %d / %d (%d Carpool Pairs)%n", m.matchedCount(), m.totalUsers(), m.matches().size());
+        System.out.printf("  Match Percentage    : %.2f%%\n", m.matchPercentage());
+        System.out.printf("  Average Match Score : %.4f%n", m.averageMatchScore());
+        System.out.printf("  Unmatched Count     : %d%n", m.unmatchedCount());
+        System.out.printf("  Execution Time      : %d ms%n", m.executionTimeMs());
     }
 }
