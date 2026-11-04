@@ -1,0 +1,21 @@
+algorithm,x_axis_participants,y_axis_execution_time_ms,y_axis_match_percentage
+"Exhaustive Peer Scan",50,2,12.0
+"R-Tree Peer Index",50,60,12.0
+"Exhaustive Peer Scan",100,2,38.0
+"R-Tree Peer Index",100,16,36.0
+"Exhaustive Peer Scan",150,6,46.666666666666664
+"R-Tree Peer Index",150,14,45.33333333333333
+"Exhaustive Peer Scan",200,10,56.99999999999999
+"R-Tree Peer Index",200,29,55.00000000000001
+"Exhaustive Peer Scan",250,19,62.4
+"R-Tree Peer Index",250,39,60.8
+"Exhaustive Peer Scan",300,37,68.0
+"R-Tree Peer Index",300,62,65.33333333333333
+"Exhaustive Peer Scan",350,41,72.0
+"R-Tree Peer Index",350,72,68.57142857142857
+"Exhaustive Peer Scan",400,51,71.5
+"R-Tree Peer Index",400,108,69.0
+"Exhaustive Peer Scan",450,72,72.88888888888889
+"R-Tree Peer Index",450,154,71.55555555555554
+"Exhaustive Peer Scan",500,125,72.8
+"R-Tree Peer Index",500,213,72.0
