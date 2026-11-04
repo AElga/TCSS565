@@ -1,1 +1,14 @@
+com\example\spatialdemo\strategy\RTreeSimilarityMatchmakingStrategy.class
+com\example\spatialdemo\model\Node.class
+com\example\spatialdemo\model\RoutePath.class
+com\example\spatialdemo\model\User.class
+com\example\spatialdemo\model\VirtualMap.class
+com\example\spatialdemo\strategy\MatchmakingStrategy.class
+com\example\spatialdemo\model\SimulationMetrics.class
+com\example\spatialdemo\config\SimulationProperties.class
+com\example\spatialdemo\strategy\BaselineMatchmakingStrategy.class
+com\example\spatialdemo\model\Coordinate.class
+com\example\spatialdemo\model\MatchResult.class
 com\example\spatialdemo\SpatialDemoApplication.class
+com\example\spatialdemo\SpatialDemoApplication$SimulationResult.class
+com\example\spatialdemo\service\SimulationService.class
