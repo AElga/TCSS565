@@ -9,5 +9,6 @@ C:\TCSS565\TCSS565\src\main\java\com\example\spatialdemo\model\VirtualMap.java
 C:\TCSS565\TCSS565\src\main\java\com\example\spatialdemo\service\SimulationService.java
 C:\TCSS565\TCSS565\src\main\java\com\example\spatialdemo\SpatialDemoApplication.java
 C:\TCSS565\TCSS565\src\main\java\com\example\spatialdemo\strategy\BaselineMatchmakingStrategy.java
+C:\TCSS565\TCSS565\src\main\java\com\example\spatialdemo\strategy\KdTreeSimilarityMatchmakingStrategy.java
 C:\TCSS565\TCSS565\src\main\java\com\example\spatialdemo\strategy\MatchmakingStrategy.java
 C:\TCSS565\TCSS565\src\main\java\com\example\spatialdemo\strategy\RTreeSimilarityMatchmakingStrategy.java

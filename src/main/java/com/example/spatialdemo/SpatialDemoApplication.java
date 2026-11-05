@@ -5,6 +5,7 @@ import com.example.spatialdemo.model.User;
 import com.example.spatialdemo.model.VirtualMap;
 import com.example.spatialdemo.service.SimulationService;
 import com.example.spatialdemo.strategy.BaselineMatchmakingStrategy;
+import com.example.spatialdemo.strategy.KdTreeSimilarityMatchmakingStrategy;
 import com.example.spatialdemo.strategy.RTreeSimilarityMatchmakingStrategy;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -52,15 +53,20 @@ public class SpatialDemoApplication implements CommandLineRunner {
 
         BaselineMatchmakingStrategy baseline = new BaselineMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold());
         RTreeSimilarityMatchmakingStrategy rtree = new RTreeSimilarityMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold(), props.rtreeBuffer());
-        List<SimulationResult> results = new ArrayList<>(20);
+        KdTreeSimilarityMatchmakingStrategy kdTree = new KdTreeSimilarityMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold());
+        List<SimulationResult> results = new ArrayList<>(30);
         for (int participantCount = 50; participantCount <= 500; participantCount += 50) {
-            List<User> users = simulationService.generateSyntheticUsers(participantCount);
-            System.out.printf("Running algorithms for %d participants...%n", participantCount);
+            long seed = props.randomSeed() + participantCount;
+            List<User> users = simulationService.generateSyntheticUsers(participantCount, seed);
+            System.out.printf("Running algorithms for %d participants (seed %d)...%n", participantCount, seed);
             SimulationMetrics baselineMetrics = simulationService.runSimulation(baseline, users);
             results.add(new SimulationResult(participantCount, baselineMetrics));
 
             SimulationMetrics rtreeMetrics = simulationService.runSimulation(rtree, users);
             results.add(new SimulationResult(participantCount, rtreeMetrics));
+
+            SimulationMetrics kdTreeMetrics = simulationService.runSimulation(kdTree, users);
+            results.add(new SimulationResult(participantCount, kdTreeMetrics));
         }
 
         Path outputDirectory = Path.of("src", "main", "java", "com", "example", "spatialdemo", "output");
@@ -69,24 +75,34 @@ public class SpatialDemoApplication implements CommandLineRunner {
         writeCombinedResultsCsv(combinedCsvPath, results);
         writeAlgorithmResultsCsvs(outputDirectory, results);
 
-        SimulationMetrics exampleMetrics = results.stream()
+        SimulationMetrics rtreeExampleMetrics = results.stream()
                 .filter(result -> result.participantCount() == 500)
                 .map(SimulationResult::metrics)
                 .filter(metrics -> metrics.algorithmName().equals(rtree.getAlgorithmName()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Missing R-Tree results for 500 participants"));
+        SimulationMetrics kdTreeExampleMetrics = results.stream()
+                .filter(result -> result.participantCount() == 500)
+                .map(SimulationResult::metrics)
+                .filter(metrics -> metrics.algorithmName().equals(kdTree.getAlgorithmName()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Missing k-d tree results for 500 participants"));
         System.out.println();
         System.out.println("Example result (R-Tree, 500 participants):");
-        printMetrics(exampleMetrics);
+        printMetrics(rtreeExampleMetrics);
+        System.out.println();
+        System.out.println("Example result (k-d tree, 500 participants):");
+        printMetrics(kdTreeExampleMetrics);
 
         String baselineFileName = toFileName(baseline.getAlgorithmName());
         String rtreeFileName = toFileName(rtree.getAlgorithmName());
+        String kdTreeFileName = toFileName(kdTree.getAlgorithmName());
         System.out.printf("%nCSV output directory: %s%n", outputDirectory.toAbsolutePath());
         System.out.printf("  Combined: %s%n", combinedCsvPath.toAbsolutePath());
-        System.out.printf("  Execution time: %s-execution-time.csv, %s-execution-time.csv%n",
-                baselineFileName, rtreeFileName);
-        System.out.printf("  Match percentage: %s-match-percentage.csv, %s-match-percentage.csv%n",
-                baselineFileName, rtreeFileName);
+        System.out.printf("  Execution time: %s-execution-time.csv, %s-execution-time.csv, %s-execution-time.csv%n",
+                baselineFileName, rtreeFileName, kdTreeFileName);
+        System.out.printf("  Match percentage: %s-match-percentage.csv, %s-match-percentage.csv, %s-match-percentage.csv%n",
+                baselineFileName, rtreeFileName, kdTreeFileName);
         System.out.println("  Chart columns: x_axis_participants vs. the corresponding y_axis value");
         System.out.println("Simulation complete. You may end the program.");
     }

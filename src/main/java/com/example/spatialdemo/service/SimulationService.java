@@ -55,8 +55,12 @@ public class SimulationService {
     }
 
     public List<User> generateSyntheticUsers(int count) {
+        return generateSyntheticUsers(count, properties.randomSeed() + count);
+    }
+
+    public List<User> generateSyntheticUsers(int count, long seed) {
         List<User> users = new ArrayList<>();
-        Random random = new Random(properties.randomSeed() + 1);
+        Random random = new Random(seed);
         List<Node> nodes = virtualMap.nodes();
 
         for (int i = 0; i < count; i++) {
