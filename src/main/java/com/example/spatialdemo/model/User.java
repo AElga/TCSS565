@@ -6,7 +6,9 @@ public record User(
         Node originNode,
         Node destinationNode,
         double departureTime,
-        double arrivalDeadline
+        double arrivalDeadline,
+        // Stored for simulation data; matching currently ignores this value.
+        int vehicleCapacity
 ) {
     public Coordinate origin() {
         return new Coordinate(originNode.x(), originNode.y());

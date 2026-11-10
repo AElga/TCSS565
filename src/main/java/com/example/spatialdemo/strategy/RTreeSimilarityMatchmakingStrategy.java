@@ -45,7 +45,6 @@ public record RTreeSimilarityMatchmakingStrategy(double spatialThreshold, double
             );
 
             Iterable<Entry<User, Rectangle>> candidateEntries = tree.search(searchRect).toBlocking().toIterable();
-
             User bestPartner = null;
             double bestScore = -1.0;
             double bestOrigDist = Double.MAX_VALUE;

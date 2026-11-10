@@ -75,7 +75,9 @@ public class SimulationService {
                     originNode,
                     destinationNode,
                     departureTime,
-                    deadline
+                    deadline,
+                    // Random.nextInt uses an exclusive upper bound, so add one for an inclusive max.
+                    random.nextInt(properties.minVehicleCapacity(), properties.maxVehicleCapacity() + 1)
             ));
         }
         return users;

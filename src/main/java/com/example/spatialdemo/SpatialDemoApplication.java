@@ -38,6 +38,14 @@ public class SpatialDemoApplication implements CommandLineRunner {
 
         List<User> users = simulationService.generateSyntheticUsers();
         System.out.printf("Population Initialized: [%d Participants spawning at graph nodes]%n", users.size());
+        // Report the generated capacity distribution; capacities do not affect matching yet.
+        for (int capacity = props.minVehicleCapacity(); capacity <= props.maxVehicleCapacity(); capacity++) {
+            int count = 0;
+            for (User user : users) {
+                if (user.vehicleCapacity() == capacity) count++;
+            }
+            System.out.printf("Vehicles with %d passenger seats: %d%n", capacity, count);
+        }
         System.out.println("This is where the fun begins! For nerds, anyway.");
         System.out.println();
 
