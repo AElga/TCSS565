@@ -13,4 +13,5 @@ public record SimulationMetrics(
         double averageMatchScore,
         long executionTimeMs,
         List<MatchResult> matches
-) {}
+) {
+}
