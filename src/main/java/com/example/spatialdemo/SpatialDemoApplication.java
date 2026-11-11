@@ -5,6 +5,7 @@ import com.example.spatialdemo.model.User;
 import com.example.spatialdemo.model.VirtualMap;
 import com.example.spatialdemo.service.SimulationService;
 import com.example.spatialdemo.strategy.BaselineMatchmakingStrategy;
+import com.example.spatialdemo.strategy.RTreeDeepMatchingStrategy;
 import com.example.spatialdemo.strategy.RTreeSimilarityMatchmakingStrategy;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -32,23 +33,12 @@ public class SpatialDemoApplication implements CommandLineRunner {
         var props = simulationService.getProperties();
         VirtualMap map = simulationService.getVirtualMap();
 
-        System.out.printf("Nodes: %d | Routes: %d%n", map.nodes().size(), map.routePaths().size());
-        System.out.printf("Users: %d | Spatial Threshold: %.1f | Time Threshold: %.1f%n",
-                props.userCount(), props.spatialThreshold(), props.timeThreshold());
+        System.out.printf("Nodes: %d (Virtual Map active)%n", map.nodes().size());
+        System.out.printf("Users: %d | Horizon: %.1f | Cycle: %.1f | Max Stops: %d%n",
+                props.userCount(), props.simulationHorizon(), props.cycleDuration(), props.maxUserStops());
 
         List<User> users = simulationService.generateSyntheticUsers();
-        System.out.printf("Population Initialized: [%d Participants spawning at graph nodes]%n", users.size());
-        // Report the generated capacity distribution; capacities do not affect matching yet.
-        for (int capacity = props.minVehicleCapacity(); capacity <= props.maxVehicleCapacity(); capacity++) {
-            int count = 0;
-            for (User user : users) {
-                if (user.vehicleCapacity() == capacity) count++;
-            }
-            System.out.printf("Vehicles with %d passenger seats: %d%n", capacity, count);
-        }
-        System.out.println("This is where the fun begins! For nerds, anyway.");
-        System.out.println();
-
+        System.out.printf("Population Initialized: [%d Participants with multi-stop itineraries]%n", users.size());
 
         BaselineMatchmakingStrategy baseline = new BaselineMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold());
         SimulationMetrics baselineMetrics = simulationService.runSimulation(baseline, users);
@@ -61,16 +51,30 @@ public class SpatialDemoApplication implements CommandLineRunner {
         printMetrics(rtreeMetrics);
 
         System.out.println();
+
+        RTreeDeepMatchingStrategy deepRtree = new RTreeDeepMatchingStrategy(props.spatialThreshold(), props.timeThreshold(), props.rtreeBuffer());
+        SimulationMetrics deepMetrics = simulationService.runSimulation(deepRtree, users);
+        printMetrics(deepMetrics);
+
+        System.out.println();
         System.out.println("Simulation complete. You may end the program.");
     }
 
     private void printMetrics(SimulationMetrics m) {
         System.out.printf("ALGORITHM: %s%n", m.algorithmName());
-        System.out.printf("  Total Participants  : %d%n", m.totalUsers());
-        System.out.printf("  Matched Participants: %d / %d (%d Carpool Pairs)%n", m.matchedCount(), m.totalUsers(), m.matches().size());
-        System.out.printf("  Match Percentage    : %.2f%%\n", m.matchPercentage());
-        System.out.printf("  Average Match Score : %.4f%n", m.averageMatchScore());
-        System.out.printf("  Unmatched Count     : %d%n", m.unmatchedCount());
-        System.out.printf("  Execution Time      : %d ms%n", m.executionTimeMs());
+        System.out.printf("  Total Participants       : %d%n", m.totalUsers());
+        System.out.printf("  Matched Participants     : %d / %d (%d Carpool Pairs)%n", m.matchedCount(), m.totalUsers(), m.matches().size());
+        System.out.printf("    - Independent Solo     : %d participants%n", m.independentCompletionCount());
+        System.out.printf("    - Carpool Participants : %d participants%n", m.carpoolCompletionCount());
+        System.out.printf("  Match Percentage         : %.2f%%\n", m.matchPercentage());
+        System.out.printf("  Leg Completion Rate      : %d / %d legs (%.2f%%)%n", m.totalLegsCompleted(), m.totalLegsAttempted(), m.legCompletionPercentage());
+        System.out.printf("  Average Simulation Score : %.4f%n", m.averageSimulationScore());
+        System.out.printf("  Avg Score (No Fails)     : %.4f%n", m.averageMatchedScoreNoFails());
+        System.out.printf("    - Independent Score    : %.4f%n", m.averageIndependentScore());
+        System.out.printf("    - Carpool Score        : %.4f%n", m.averageCarpoolScore());
+        System.out.printf("  Average Detour Dist      : %.2f%n", m.averageDetourDistance());
+        System.out.printf("  Unmatched Count          : %d%n", m.unmatchedCount());
+        System.out.printf("  Stranded Count           : %d (Including Initially Isolated Passengers)%n", m.strandedCount());
+        System.out.printf("  Execution Time           : %d ms%n", m.executionTimeMs());
     }
 }

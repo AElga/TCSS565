@@ -11,32 +11,35 @@ public record BaselineMatchmakingStrategy(double spatialThreshold,
 
     @Override
     public String getAlgorithmName() {
-        return "Exhaustive Peer Scan";
+        return "Exhaustive Driver-Passenger Scan";
     }
 
     @Override
-    public List<MatchResult> findMatches(List<User> users) {
+    public List<MatchResult> findMatches(List<User> potentialRiders) {
         List<MatchResult> results = new ArrayList<>();
-        List<String> matchedIds = new ArrayList<>();
+        List<String> matchedPassengerIds = new ArrayList<>();
 
-        for (int i = 0; i < users.size(); i++) {
-            User u1 = users.get(i);
-            if (matchedIds.contains(u1.id())) continue;
+        List<User> drivers = potentialRiders.stream().filter(u -> u.isDriver() && u.vehicleCapacity() > 0).toList();
 
-            for (int j = i + 1; j < users.size(); j++) {
-                User u2 = users.get(j);
-                if (matchedIds.contains(u2.id())) continue;
+        for (User driver : drivers) {
+            if (matchedPassengerIds.contains(driver.id())) continue;
 
-                double destDist = u1.destination().distanceTo(u2.destination());
-                double origDist = u1.origin().distanceTo(u2.origin());
-                double timeDiff = Math.abs(u1.departureTime() - u2.departureTime());
+            int currentCapacity = driver.vehicleCapacity();
+
+            for (User rider : potentialRiders) {
+                if (rider.id().equals(driver.id())) continue; // Can't ride with yourself
+                if (matchedPassengerIds.contains(rider.id())) continue;
+                if (currentCapacity <= 0) break;
+
+                double destDist = driver.currentDestinationCoordinate().distanceTo(rider.currentDestinationCoordinate());
+                double origDist = driver.origin().distanceTo(rider.origin());
+                double timeDiff = Math.abs(driver.departureTime() - rider.departureTime());
 
                 if (destDist <= spatialThreshold && origDist <= spatialThreshold && timeDiff <= timeThreshold) {
                     double score = 1.0 / (1.0 + origDist + destDist + timeDiff);
-                    results.add(new MatchResult(u1.id(), u2.id(), score, origDist, getAlgorithmName()));
-                    matchedIds.add(u1.id());
-                    matchedIds.add(u2.id());
-                    break;
+                    results.add(new MatchResult(driver.id(), rider.id(), score, origDist, getAlgorithmName()));
+                    matchedPassengerIds.add(rider.id());
+                    currentCapacity--;
                 }
             }
         }

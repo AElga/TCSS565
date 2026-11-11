@@ -9,9 +9,18 @@ public record SimulationMetrics(
         int totalPassengers,
         int matchedCount,
         int unmatchedCount,
+        int strandedCount,
         double matchPercentage,
-        double averageMatchScore,
+        double averageSimulationScore,
+        double averageMatchedScoreNoFails,
+        int independentCompletionCount,
+        int carpoolCompletionCount,
+        double averageIndependentScore,
+        double averageCarpoolScore,
+        int totalLegsAttempted,
+        int totalLegsCompleted,
+        double legCompletionPercentage,
+        double averageDetourDistance,
         long executionTimeMs,
         List<MatchResult> matches
-) {
-}
+) {}
