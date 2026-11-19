@@ -9,10 +9,14 @@ import com.github.davidmoten.rtree.geometry.Rectangle;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
-public record RTreeSimilarityMatchmakingStrategy(double spatialThreshold, double timeThreshold,
-                                                 double rtreeBuffer) implements MatchmakingStrategy {
+public record RTreeSimilarityMatchmakingStrategy(double spatialThreshold,
+                                                 double timeThreshold,
+                                                 double rtreeBuffer,
+                                                 int vehicleCapacity) implements MatchmakingStrategy {
 
     @Override
     public String getAlgorithmName() {
@@ -22,9 +26,13 @@ public record RTreeSimilarityMatchmakingStrategy(double spatialThreshold, double
     @Override
     public List<MatchResult> findMatches(List<User> users) {
         List<MatchResult> results = new ArrayList<>();
-        List<String> matchedPassengerIds = new ArrayList<>();
+        int maxPassengerSeats = Math.max(0, vehicleCapacity - 1);
+        if (maxPassengerSeats == 0) {
+            return results;
+        }
 
-        List<User> drivers = users.stream().filter(u -> u.isDriver() && u.vehicleCapacity() > 0).toList();
+        Set<String> matchedIds = new HashSet<>();
+        List<User> drivers = users.stream().filter(User::isDriver).toList();
 
         RTree<User, Rectangle> tree = RTree.create();
         for (User rider : users) {
@@ -39,7 +47,7 @@ public record RTreeSimilarityMatchmakingStrategy(double spatialThreshold, double
         }
 
         for (User driver : drivers) {
-            if (matchedPassengerIds.contains(driver.id())) continue;
+            if (matchedIds.contains(driver.id())) continue;
 
             Rectangle searchRect = Geometries.rectangle(
                     driver.origin().x() - spatialThreshold,
@@ -50,34 +58,42 @@ public record RTreeSimilarityMatchmakingStrategy(double spatialThreshold, double
 
             Iterable<Entry<User, Rectangle>> candidateEntries = tree.search(searchRect).toBlocking().toIterable();
 
-            record RiderCandidate(User rider, double score, double origDist) {}
+            record RiderCandidate(User rider, double totalDist, double timeDiff, double score, double origDist) {}
             List<RiderCandidate> validCandidates = new ArrayList<>();
 
             for (Entry<User, Rectangle> entry : candidateEntries) {
                 User candidate = entry.value();
                 if (candidate.id().equals(driver.id())) continue;
-                if (matchedPassengerIds.contains(candidate.id())) continue;
+                if (matchedIds.contains(candidate.id())) continue;
 
                 double destDist = driver.currentDestinationCoordinate().distanceTo(candidate.currentDestinationCoordinate());
                 double origDist = driver.origin().distanceTo(candidate.origin());
                 double timeDiff = Math.abs(driver.departureTime() - candidate.departureTime());
 
                 if (destDist <= spatialThreshold && origDist <= spatialThreshold && timeDiff <= timeThreshold) {
-                    double score = 1.0 / (1.0 + origDist + destDist + timeDiff);
-                    validCandidates.add(new RiderCandidate(candidate, score, origDist));
+                    double totalDist = origDist + destDist;
+                    double score = 1.0 / (1.0 + totalDist + timeDiff);
+                    validCandidates.add(new RiderCandidate(candidate, totalDist, timeDiff, score, origDist));
                 }
             }
 
-            validCandidates.sort(Comparator.comparingDouble(RiderCandidate::score).reversed());
+            // Pick the closest spatial match (tie-breaking by smallest time difference)
+            validCandidates.sort(
+                    Comparator.comparingDouble(RiderCandidate::totalDist)
+                            .thenComparingDouble(RiderCandidate::timeDiff)
+            );
 
             int seatsFilled = 0;
-            int capacity = driver.vehicleCapacity();
             for (RiderCandidate rc : validCandidates) {
-                if (seatsFilled >= capacity) break;
+                if (seatsFilled >= maxPassengerSeats) break;
 
                 results.add(new MatchResult(driver.id(), rc.rider.id(), rc.score, rc.origDist, getAlgorithmName()));
-                matchedPassengerIds.add(rc.rider.id());
+                matchedIds.add(rc.rider.id());
                 seatsFilled++;
+            }
+
+            if (seatsFilled > 0) {
+                matchedIds.add(driver.id());
             }
         }
         return results;

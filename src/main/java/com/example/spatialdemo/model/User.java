@@ -8,8 +8,7 @@ public record User(
         Node originNode,
         double departureTime,
         List<Stop> itinerary,
-        boolean isDriver,
-        int vehicleCapacity
+        boolean isDriver
 ) {
     public Coordinate origin() {
         return new Coordinate(originNode.x(), originNode.y());

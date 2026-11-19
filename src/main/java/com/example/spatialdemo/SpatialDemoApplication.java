@@ -34,25 +34,28 @@ public class SpatialDemoApplication implements CommandLineRunner {
         VirtualMap map = simulationService.getVirtualMap();
 
         System.out.printf("Nodes: %d (Virtual Map active)%n", map.nodes().size());
-        System.out.printf("Users: %d | Horizon: %.1f | Cycle: %.1f | Max Stops: %d%n",
-                props.userCount(), props.simulationHorizon(), props.cycleDuration(), props.maxUserStops());
+        System.out.printf("Users: %d | Horizon: %.1f | Cycle: %.1f | Max Stops: %d | Vehicle Capacity: %d%n",
+                props.userCount(), props.simulationHorizon(), props.cycleDuration(), props.maxUserStops(), props.vehicleCapacity());
 
         List<User> users = simulationService.generateSyntheticUsers();
         System.out.printf("Population Initialized: [%d Participants with multi-stop itineraries]%n", users.size());
 
-        BaselineMatchmakingStrategy baseline = new BaselineMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold());
+        BaselineMatchmakingStrategy baseline = new BaselineMatchmakingStrategy(
+                props.spatialThreshold(), props.timeThreshold(), props.vehicleCapacity());
         SimulationMetrics baselineMetrics = simulationService.runSimulation(baseline, users);
         printMetrics(baselineMetrics);
 
         System.out.println();
 
-        RTreeSimilarityMatchmakingStrategy rtree = new RTreeSimilarityMatchmakingStrategy(props.spatialThreshold(), props.timeThreshold(), props.rtreeBuffer());
+        RTreeSimilarityMatchmakingStrategy rtree = new RTreeSimilarityMatchmakingStrategy(
+                props.spatialThreshold(), props.timeThreshold(), props.rtreeBuffer(), props.vehicleCapacity());
         SimulationMetrics rtreeMetrics = simulationService.runSimulation(rtree, users);
         printMetrics(rtreeMetrics);
 
         System.out.println();
 
-        RTreeDeepMatchingStrategy deepRtree = new RTreeDeepMatchingStrategy(props.spatialThreshold(), props.timeThreshold(), props.rtreeBuffer());
+        RTreeDeepMatchingStrategy deepRtree = new RTreeDeepMatchingStrategy(
+                props.spatialThreshold(), props.timeThreshold(), props.rtreeBuffer(), props.vehicleCapacity());
         SimulationMetrics deepMetrics = simulationService.runSimulation(deepRtree, users);
         printMetrics(deepMetrics);
 

@@ -14,16 +14,18 @@ public record SimulationProperties(
         double minDeadlineOffset,
         double maxDeadlineOffset,
         double driverRatio,
-        int minVehicleCapacity,
-        int maxVehicleCapacity,
+        int vehicleCapacity,
         double simulationHorizon,
         double cycleDuration,
         int maxUserStops,
         long randomSeed
 ) {
     public SimulationProperties {
-        if (minVehicleCapacity < 0 || maxVehicleCapacity < minVehicleCapacity) {
-            throw new IllegalArgumentException("Vehicle capacity range must be non-negative and ordered");
+        if (nodeCount < 2) {
+            throw new IllegalArgumentException("Node count must be at least 2");
+        }
+        if (vehicleCapacity < 1) {
+            throw new IllegalArgumentException("Vehicle capacity must be at least 1");
         }
         if (driverRatio < 0.0 || driverRatio > 1.0) {
             throw new IllegalArgumentException("Driver ratio must be between 0.0 and 1.0");

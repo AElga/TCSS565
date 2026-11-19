@@ -43,9 +43,13 @@ public class SimulationService {
         Random random = new Random(properties.randomSeed() + 1);
         List<Node> nodes = virtualMap.nodes();
 
+        if (nodes.size() < 2) {
+            throw new IllegalStateException("At least 2 nodes are required to generate distinct sequential stops");
+        }
+
         for (int i = 0; i < count; i++) {
             Node originNode = nodes.get(random.nextInt(nodes.size()));
-            double departureTime = random.nextDouble() * (properties.simulationHorizon() * 0.5);
+            double departureTime = random.nextDouble() * properties.maxDepartureTime();
 
             int stopCount = 1 + random.nextInt(Math.max(1, properties.maxUserStops()));
             List<Stop> itinerary = new ArrayList<>();
@@ -62,14 +66,14 @@ public class SimulationService {
                 cumulativeTime += dist * 1.2;
 
                 double earliestArrival = cumulativeTime;
-                double latestDeadline = earliestArrival + properties.minDeadlineOffset() + (random.nextDouble() * properties.maxDeadlineOffset() * 2.0);
+                double latestDeadline = earliestArrival + properties.minDeadlineOffset()
+                        + (random.nextDouble() * properties.maxDeadlineOffset() * 2.0);
 
                 itinerary.add(new Stop(stopNode, earliestArrival, latestDeadline));
                 previousNode = stopNode;
             }
 
             boolean isDriver = random.nextDouble() < properties.driverRatio();
-            int capacity = isDriver ? random.nextInt(properties.minVehicleCapacity(), properties.maxVehicleCapacity() + 1) : 0;
 
             users.add(new User(
                     "USER-" + (i + 1),
@@ -77,15 +81,14 @@ public class SimulationService {
                     originNode,
                     departureTime,
                     itinerary,
-                    isDriver,
-                    capacity
+                    isDriver
             ));
         }
         return users;
     }
 
     private static class ParticipantState {
-        User baseUser;
+        final User baseUser;
         Node currentLocation;
         double currentEffectiveDepartureTime;
         final List<Stop> remainingItinerary;
@@ -108,57 +111,53 @@ public class SimulationService {
             this.totalLegs = user.itinerary().size();
         }
 
-        void advanceLeg(double legScore, boolean carpooled) {
+        void advanceLeg(double legScore, boolean carpooled, double cycleDuration) {
             if (!remainingItinerary.isEmpty()) {
-                Stop completedStop = remainingItinerary.remove(0);
+                Stop completedStop = remainingItinerary.removeFirst();
                 currentLocation = completedStop.node();
-                currentEffectiveDepartureTime = completedStop.latestDeadline();
+                currentEffectiveDepartureTime = Math.max(
+                        currentEffectiveDepartureTime + cycleDuration,
+                        completedStop.latestDeadline()
+                );
                 completedLegs++;
                 legScores.add(legScore);
                 if (carpooled) {
                     this.wasCarpooled = true;
                 }
-                if (remainingItinerary.isEmpty()) {
+
+                boolean driverFinished = remainingItinerary.isEmpty();
+                if (driverFinished) {
                     hasCompleted = true;
-                    passengersOnBoard.clear();
                 }
 
                 for (ParticipantState passenger : new ArrayList<>(passengersOnBoard)) {
                     passenger.currentLocation = this.currentLocation;
+                    passenger.advanceLeg(legScore, true, cycleDuration);
                     passenger.currentEffectiveDepartureTime = this.currentEffectiveDepartureTime;
-                    passenger.advanceLeg(legScore, true);
-                    if (passenger.hasCompleted || passenger.remainingItinerary.isEmpty()) {
+
+                    if (driverFinished || passenger.hasCompleted || passenger.remainingItinerary.isEmpty()) {
+                        passenger.isRidingAsPassenger = false;
+                        passenger.driverHost = null;
                         passengersOnBoard.remove(passenger);
                         currentPassengersCount = Math.max(0, currentPassengersCount - 1);
                     }
                 }
+
+                if (driverFinished) {
+                    passengersOnBoard.clear();
+                    currentPassengersCount = 0;
+                }
             }
         }
 
-        void demoteToPassenger() {
-            this.baseUser = new User(
-                    baseUser.id(),
-                    baseUser.name(),
-                    baseUser.originNode(),
-                    baseUser.departureTime(),
-                    baseUser.itinerary(),
-                    false,
-                    0
-            );
-        }
-
         User toLegSnapshot() {
-            int maxPassengerSeats = Math.max(0, baseUser.vehicleCapacity() - 1);
-            int availableCapacity = baseUser.isDriver() ? Math.max(0, maxPassengerSeats - currentPassengersCount) : 0;
-
             return new User(
                     baseUser.id(),
                     baseUser.name(),
                     currentLocation,
                     currentEffectiveDepartureTime,
                     new ArrayList<>(remainingItinerary),
-                    baseUser.isDriver(),
-                    availableCapacity
+                    baseUser.isDriver()
             );
         }
     }
@@ -169,8 +168,15 @@ public class SimulationService {
         double dispatchHorizon = properties.simulationHorizon();
         double maxTravelHorizon = dispatchHorizon * 5;
         double cycleDuration = properties.cycleDuration();
+        double timeThreshold = properties.timeThreshold();
+        int maxPassengerSeats = Math.max(0, properties.vehicleCapacity() - 1);
 
         List<ParticipantState> states = users.stream().map(ParticipantState::new).toList();
+        Map<String, ParticipantState> stateById = new HashMap<>();
+        for (ParticipantState s : states) {
+            stateById.put(s.baseUser.id(), s);
+        }
+
         List<MatchResult> allMatches = new ArrayList<>();
 
         for (double currentTime = 0.0; currentTime < maxTravelHorizon; currentTime += cycleDuration) {
@@ -184,7 +190,10 @@ public class SimulationService {
             List<ParticipantState> activeStates = states.stream()
                     .filter(s -> !s.hasCompleted)
                     .filter(s -> !s.isRidingAsPassenger)
-                    .filter(s -> s.currentEffectiveDepartureTime >= finalCurrentTime && s.currentEffectiveDepartureTime < windowEnd)
+                    .filter(s -> s.currentEffectiveDepartureTime < windowEnd)
+                    .filter(s -> s.baseUser.isDriver()
+                            ? s.currentEffectiveDepartureTime >= finalCurrentTime
+                            : (finalCurrentTime - s.currentEffectiveDepartureTime) <= timeThreshold)
                     .toList();
 
             if (!activeStates.isEmpty()) {
@@ -193,38 +202,52 @@ public class SimulationService {
                         .toList();
 
                 if (!eligibleStates.isEmpty()) {
-                    List<User> legUsers = eligibleStates.stream().map(ParticipantState::toLegSnapshot).toList();
+                    List<User> legUsers = eligibleStates.stream()
+                            .filter(s -> !s.baseUser.isDriver() || s.currentPassengersCount < maxPassengerSeats)
+                            .map(ParticipantState::toLegSnapshot)
+                            .toList();
+
                     List<MatchResult> cycleMatches = strategy.findMatches(legUsers);
 
                     Set<String> matchedIdsThisCycle = new HashSet<>();
+                    Map<ParticipantState, Double> matchedDriverScores = new LinkedHashMap<>();
+
                     for (MatchResult match : cycleMatches) {
-                        allMatches.add(match);
-                        matchedIdsThisCycle.add(match.driverId());
-                        matchedIdsThisCycle.add(match.passengerId());
+                        ParticipantState driverState = stateById.get(match.driverId());
+                        ParticipantState passengerState = stateById.get(match.passengerId());
 
-                        double carpoolScore = match.matchScore() * 2.0;
+                        if (driverState != null && passengerState != null
+                                && !driverState.baseUser.id().equals(passengerState.baseUser.id())
+                                && driverState.baseUser.isDriver()
+                                && !driverState.isRidingAsPassenger
+                                && !passengerState.isRidingAsPassenger
+                                && !matchedIdsThisCycle.contains(passengerState.baseUser.id())
+                                && !matchedDriverScores.containsKey(passengerState)
+                                && driverState.currentPassengersCount < maxPassengerSeats) {
 
-                        ParticipantState driverState = states.stream().filter(s -> s.baseUser.id().equals(match.driverId())).findFirst().orElse(null);
-                        ParticipantState passengerState = states.stream().filter(s -> s.baseUser.id().equals(match.passengerId())).findFirst().orElse(null);
+                            allMatches.add(match);
+                            matchedIdsThisCycle.add(match.driverId());
+                            matchedIdsThisCycle.add(match.passengerId());
 
-                        if (driverState != null && passengerState != null) {
+                            double carpoolScore = match.matchScore() * 2.0;
+
                             driverState.passengersOnBoard.add(passengerState);
                             driverState.currentPassengersCount++;
                             passengerState.isRidingAsPassenger = true;
                             passengerState.driverHost = driverState;
 
-                            driverState.advanceLeg(carpoolScore, true);
-                            passengerState.demoteToPassenger();
-                            passengerState.advanceLeg(carpoolScore, true);
+                            matchedDriverScores.merge(driverState, carpoolScore, Math::max);
                         }
                     }
 
+                    for (Map.Entry<ParticipantState, Double> entry : matchedDriverScores.entrySet()) {
+                        entry.getKey().advanceLeg(entry.getValue(), true, cycleDuration);
+                    }
+
                     for (ParticipantState state : eligibleStates) {
-                        if (!matchedIdsThisCycle.contains(state.baseUser.id())) {
-                            if (state.baseUser.isDriver() && state.baseUser.vehicleCapacity() > 0) {
-                                double soloScore = 0.2;
-                                state.advanceLeg(soloScore, false);
-                            }
+                        if (!matchedIdsThisCycle.contains(state.baseUser.id()) && state.baseUser.isDriver()) {
+                            double soloScore = 0.2;
+                            state.advanceLeg(soloScore, false, cycleDuration);
                         }
                     }
                 }
@@ -266,7 +289,7 @@ public class SimulationService {
         int carpoolCompletionCount = (int) states.stream().filter(s -> s.hasCompleted && s.wasCarpooled).count();
 
         double averageIndependentScore = states.stream()
-                .filter(s -> !s.wasCarpooled)
+                .filter(s -> s.hasCompleted && !s.wasCarpooled)
                 .flatMapToDouble(s -> s.legScores.stream().mapToDouble(Double::doubleValue))
                 .average()
                 .orElse(0.0);
