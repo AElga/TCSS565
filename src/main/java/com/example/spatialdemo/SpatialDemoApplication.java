@@ -66,15 +66,15 @@ public class SpatialDemoApplication implements CommandLineRunner {
     private void printMetrics(SimulationMetrics m) {
         System.out.printf("ALGORITHM: %s%n", m.algorithmName());
         System.out.printf("  Total Participants       : %d%n", m.totalUsers());
-        System.out.printf("  Matched Participants     : %d / %d (%d Carpool Pairs)%n", m.matchedCount(), m.totalUsers(), m.matches().size());
-        System.out.printf("    - Independent Solo     : %d participants%n", m.independentCompletionCount());
+        System.out.printf("  Completed Participants   : %d / %d (%d Carpool Leg-Matches)%n",
+                m.matchedCount(), m.totalUsers(), m.matches().size());        System.out.printf("    - Independent Solo     : %d participants%n", m.independentCompletionCount());
         System.out.printf("    - Carpool Participants : %d participants%n", m.carpoolCompletionCount());
-        System.out.printf("  Match Percentage         : %.2f%%\n", m.matchPercentage());
+        System.out.printf("  Completion Percentage    : %.2f%%%n", m.matchPercentage());
         System.out.printf("  Leg Completion Rate      : %d / %d legs (%.2f%%)%n", m.totalLegsCompleted(), m.totalLegsAttempted(), m.legCompletionPercentage());
-        System.out.printf("  Average Simulation Score : %.4f%n", m.averageSimulationScore());
-        System.out.printf("  Avg Score (No Fails)     : %.4f%n", m.averageMatchedScoreNoFails());
-        System.out.printf("    - Independent Score    : %.4f%n", m.averageIndependentScore());
-        System.out.printf("    - Carpool Score        : %.4f%n", m.averageCarpoolScore());
+        System.out.printf("  User Preference Score    : %.4f (Completed: %.4f | Carpool: %.4f)%n",
+                m.averageUserPreferenceScore(), m.averageCompletedPreferenceScore(), m.averageCarpoolPreferenceScore());
+        System.out.printf("  Resources Used           : %d vehicle-legs (Avg Occupancy: %.2f | Vehicles Saved: %.2f%%)%n",
+                m.totalVehiclesUsed(), m.averageVehicleOccupancy(), m.resourceSavingsPercentage());
         System.out.printf("  Average Detour Dist      : %.2f%n", m.averageDetourDistance());
         System.out.printf("  Unmatched Count          : %d%n", m.unmatchedCount());
         System.out.printf("  Stranded Count           : %d (Including Initially Isolated Passengers)%n", m.strandedCount());

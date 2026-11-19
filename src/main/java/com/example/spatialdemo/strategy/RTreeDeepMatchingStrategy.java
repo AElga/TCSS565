@@ -136,13 +136,16 @@ public record RTreeDeepMatchingStrategy(double spatialThreshold,
             }
         }
 
-        // Phase 1: Many-to-one Gale-Shapley stable matching for non-driver passengers
         Map<String, List<CandidateEdge>> assignedByDriver = new HashMap<>();
         Map<String, CandidateEdge> riderMatch = new HashMap<>();
-        runStableMatching(drivers, passengerPrefsByDriver, assignedByDriver, riderMatch, maxPassengerSeats, Set.of());
+        runStableMatching(drivers, passengerPrefsByDriver, assignedByDriver, riderMatch, maxPassengerSeats, new HashSet<>());
 
-        // Phase 2: Stable matching for remaining open seats with drivers who are not hosting anyone
-        Set<String> busyDrivers = new HashSet<>(assignedByDriver.keySet());
+        Set<String> busyDrivers = new HashSet<>();
+        for (Map.Entry<String, List<CandidateEdge>> entry : assignedByDriver.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                busyDrivers.add(entry.getKey());
+            }
+        }
         runStableMatching(drivers, driverRiderPrefsByDriver, assignedByDriver, riderMatch, maxPassengerSeats, busyDrivers);
 
         for (CandidateEdge edge : riderMatch.values()) {
@@ -172,6 +175,10 @@ public record RTreeDeepMatchingStrategy(double spatialThreshold,
 
         while (!freeDrivers.isEmpty()) {
             String driverId = freeDrivers.poll();
+            if (riderMatch.containsKey(driverId)) {
+                continue;
+            }
+
             List<CandidateEdge> prefs = prefsByDriver.get(driverId);
             List<CandidateEdge> currentAssigned = assignedByDriver.computeIfAbsent(driverId, k -> new ArrayList<>());
 
@@ -192,14 +199,19 @@ public record RTreeDeepMatchingStrategy(double spatialThreshold,
                 if (existing == null) {
                     riderMatch.put(riderId, proposal);
                     currentAssigned.add(proposal);
+                    excludedRiders.add(driverId);
                 } else if (isBetterForRider(proposal, existing)) {
                     riderMatch.put(riderId, proposal);
                     currentAssigned.add(proposal);
+                    excludedRiders.add(driverId);
 
                     List<CandidateEdge> prevDriverList = assignedByDriver.get(existing.driverId());
                     if (prevDriverList != null) {
                         prevDriverList.remove(existing);
-                        if (prevDriverList.size() < maxPassengerSeats) {
+                        if (prevDriverList.isEmpty()) {
+                            excludedRiders.remove(existing.driverId());
+                        }
+                        if (prevDriverList.size() < maxPassengerSeats && !riderMatch.containsKey(existing.driverId())) {
                             freeDrivers.add(existing.driverId());
                         }
                     }

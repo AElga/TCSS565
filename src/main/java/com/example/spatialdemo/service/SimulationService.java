@@ -95,7 +95,7 @@ public class SimulationService {
         final int totalLegs;
         int completedLegs = 0;
         boolean hasCompleted = false;
-        final List<Double> legScores = new ArrayList<>();
+        final List<Double> legPreferenceScores = new ArrayList<>();
         boolean wasCarpooled = false;
 
         int currentPassengersCount = 0;
@@ -111,7 +111,7 @@ public class SimulationService {
             this.totalLegs = user.itinerary().size();
         }
 
-        void advanceLeg(double legScore, boolean carpooled, double cycleDuration) {
+        void advanceLeg(double preferenceScore, boolean carpooled, double cycleDuration) {
             if (!remainingItinerary.isEmpty()) {
                 Stop completedStop = remainingItinerary.removeFirst();
                 currentLocation = completedStop.node();
@@ -120,7 +120,7 @@ public class SimulationService {
                         completedStop.latestDeadline()
                 );
                 completedLegs++;
-                legScores.add(legScore);
+                legPreferenceScores.add(preferenceScore);
                 if (carpooled) {
                     this.wasCarpooled = true;
                 }
@@ -132,7 +132,7 @@ public class SimulationService {
 
                 for (ParticipantState passenger : new ArrayList<>(passengersOnBoard)) {
                     passenger.currentLocation = this.currentLocation;
-                    passenger.advanceLeg(legScore, true, cycleDuration);
+                    passenger.advanceLeg(preferenceScore, true, cycleDuration);
                     passenger.currentEffectiveDepartureTime = this.currentEffectiveDepartureTime;
 
                     if (driverFinished || passenger.hasCompleted || passenger.remainingItinerary.isEmpty()) {
@@ -178,6 +178,7 @@ public class SimulationService {
         }
 
         List<MatchResult> allMatches = new ArrayList<>();
+        int totalVehiclesUsed = 0;
 
         for (double currentTime = 0.0; currentTime < maxTravelHorizon; currentTime += cycleDuration) {
             if (states.stream().allMatch(s -> s.hasCompleted)) {
@@ -229,25 +230,25 @@ public class SimulationService {
                             matchedIdsThisCycle.add(match.driverId());
                             matchedIdsThisCycle.add(match.passengerId());
 
-                            double carpoolScore = match.matchScore() * 2.0;
-
                             driverState.passengersOnBoard.add(passengerState);
                             driverState.currentPassengersCount++;
                             passengerState.isRidingAsPassenger = true;
                             passengerState.driverHost = driverState;
 
-                            matchedDriverScores.merge(driverState, carpoolScore, Math::max);
+                            matchedDriverScores.merge(driverState, match.matchScore(), Math::min);
                         }
                     }
 
                     for (Map.Entry<ParticipantState, Double> entry : matchedDriverScores.entrySet()) {
                         entry.getKey().advanceLeg(entry.getValue(), true, cycleDuration);
+                        totalVehiclesUsed++;
                     }
 
                     for (ParticipantState state : eligibleStates) {
                         if (!matchedIdsThisCycle.contains(state.baseUser.id()) && state.baseUser.isDriver()) {
-                            double soloScore = 0.2;
-                            state.advanceLeg(soloScore, false, cycleDuration);
+                            double soloPreferenceScore = 1.0;
+                            state.advanceLeg(soloPreferenceScore, false, cycleDuration);
+                            totalVehiclesUsed++;
                         }
                     }
                 }
@@ -255,8 +256,8 @@ public class SimulationService {
         }
 
         for (ParticipantState state : states) {
-            while (state.legScores.size() < state.totalLegs) {
-                state.legScores.add(0.0);
+            while (state.legPreferenceScores.size() < state.totalLegs) {
+                state.legPreferenceScores.add(0.0);
             }
         }
 
@@ -274,35 +275,36 @@ public class SimulationService {
 
         double matchPercentage = totalUsers > 0 ? ((double) completedCount / totalUsers) * 100.0 : 0.0;
 
-        double averageSimulationScore = states.stream()
-                .flatMapToDouble(s -> s.legScores.stream().mapToDouble(Double::doubleValue))
+        double averageUserPreferenceScore = states.stream()
+                .flatMapToDouble(s -> s.legPreferenceScores.stream().mapToDouble(Double::doubleValue))
                 .average()
                 .orElse(0.0);
 
-        double averageMatchedScoreNoFails = states.stream()
+        double averageCompletedPreferenceScore = states.stream()
                 .filter(s -> s.hasCompleted)
-                .flatMapToDouble(s -> s.legScores.stream().mapToDouble(Double::doubleValue))
+                .flatMapToDouble(s -> s.legPreferenceScores.stream().mapToDouble(Double::doubleValue))
+                .average()
+                .orElse(0.0);
+
+        double averageCarpoolPreferenceScore = states.stream()
+                .filter(s -> s.wasCarpooled)
+                .flatMapToDouble(s -> s.legPreferenceScores.stream().mapToDouble(Double::doubleValue))
                 .average()
                 .orElse(0.0);
 
         int independentCompletionCount = (int) states.stream().filter(s -> s.hasCompleted && !s.wasCarpooled).count();
         int carpoolCompletionCount = (int) states.stream().filter(s -> s.hasCompleted && s.wasCarpooled).count();
 
-        double averageIndependentScore = states.stream()
-                .filter(s -> s.hasCompleted && !s.wasCarpooled)
-                .flatMapToDouble(s -> s.legScores.stream().mapToDouble(Double::doubleValue))
-                .average()
-                .orElse(0.0);
-
-        double averageCarpoolScore = states.stream()
-                .filter(s -> s.wasCarpooled)
-                .flatMapToDouble(s -> s.legScores.stream().mapToDouble(Double::doubleValue))
-                .average()
-                .orElse(0.0);
-
         int totalLegsAttempted = states.stream().mapToInt(s -> s.totalLegs).sum();
         int totalLegsCompleted = states.stream().mapToInt(s -> s.completedLegs).sum();
         double legCompletionPercentage = totalLegsAttempted > 0 ? ((double) totalLegsCompleted / totalLegsAttempted) * 100.0 : 0.0;
+
+        double averageVehicleOccupancy = totalVehiclesUsed > 0
+                ? (double) totalLegsCompleted / totalVehiclesUsed
+                : 0.0;
+        double resourceSavingsPercentage = totalLegsCompleted > 0
+                ? (1.0 - ((double) totalVehiclesUsed / totalLegsCompleted)) * 100.0
+                : 0.0;
 
         double averageDetourDistance = allMatches.isEmpty() ? 0.0 : allMatches.stream()
                 .mapToDouble(MatchResult::detourDistance)
@@ -318,12 +320,14 @@ public class SimulationService {
                 totalUsers - completedCount,
                 strandedCount,
                 matchPercentage,
-                averageSimulationScore,
-                averageMatchedScoreNoFails,
+                averageUserPreferenceScore,
+                averageCompletedPreferenceScore,
+                averageCarpoolPreferenceScore,
+                totalVehiclesUsed,
+                averageVehicleOccupancy,
+                resourceSavingsPercentage,
                 independentCompletionCount,
                 carpoolCompletionCount,
-                averageIndependentScore,
-                averageCarpoolScore,
                 totalLegsAttempted,
                 totalLegsCompleted,
                 legCompletionPercentage,
